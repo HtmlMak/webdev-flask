@@ -27,3 +27,28 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/webdev-flask:latest,${{ secrets.DOCKERHUB_USERNAME }}/devdev-flask:${{ github.sha }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      USER: ci
+      HOST: 5.35.87.129
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.5.4
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+        
+      - name: Prepare build files
+        run: |
+          scp -o StrictHostKeyChecking=no docker-compose.prod.yml ${{ env.USER }}@${{ env.HOST }}:~/docker-compose.yml
+          echo "FLASK_IMAGE_ID=${{ secrets.DOCKERHUB_USERNAME }}/devdev-flask:${{ github.sha }}" > vars.env
+          scp -o StrictHostKeyChecking=no vars.env ${{ env.USER }}@${{ env.HOST }}:~/.env
+
+      - name: Startup compose
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ env.USER }}@${{ env.HOST }} 'cd ~ && docker-compose up -d'
